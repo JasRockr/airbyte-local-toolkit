@@ -1,0 +1,259 @@
+#!/bin/bash
+# Script de configuración para Airbyte en un entorno local en Ubuntu. 
+# https://docs.airbyte.com/platform/using-airbyte/getting-started/oss-quickstart
+
+# Otorgar permisos de ejecución al script antes de ejecutarlo:
+# chmod +x airbyte-setup.sh
+# Luego, ejecuta el script:
+# ./airbyte-setup.sh
+
+# ----------------------------------------
+# Configuración de manejo de errores
+# ----------------------------------------
+set -e  # Detener ejecución si cualquier comando falla
+set -u  # Error si se usan variables no definidas
+set -o pipefail  # Detectar errores en pipes
+
+# ----------------------------------------
+# Funciones auxiliares
+# ----------------------------------------
+log_info() {
+    echo "[INFO] $(date '+%Y-%m-%d %H:%M:%S') - $1"
+}
+
+log_error() {
+    echo "[ERROR] $(date '+%Y-%m-%d %H:%M:%S') - $1" >&2
+}
+
+log_success() {
+    echo "[SUCCESS] $(date '+%Y-%m-%d %H:%M:%S') - $1"
+}
+
+check_command() {
+    if command -v "$1" &> /dev/null; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# ----------------------------------------
+# Verificaciones previas
+# ----------------------------------------
+log_info "Iniciando setup de Airbyte..."
+
+# Verificar que es un sistema basado en Debian/Ubuntu
+if [ ! -f /etc/debian_version ]; then
+    log_error "Este script está diseñado para sistemas Debian/Ubuntu."
+    exit 1
+fi
+
+# Verificar que se tiene acceso a sudo
+if ! sudo -n true 2>/dev/null; then
+    log_info "Se requieren permisos de sudo. Por favor, ingresa tu contraseña:"
+    sudo -v
+fi
+
+log_success "Verificaciones previas completadas."
+
+# ----------------------------------------
+# 1. Actualizar el sistema e instalar dependencias
+# ----------------------------------------
+log_info "Actualizando sistema e instalando dependencias..."
+sudo apt update
+sudo apt upgrade -y
+sudo apt install -y curl git
+
+# Verificar si Docker ya está instalado
+if check_command docker; then
+    log_info "Docker ya está instalado. Versión:"
+    docker --version
+else
+    log_info "Instalando Docker..."
+    sudo apt install -y docker.io
+    log_success "Docker instalado correctamente."
+fi
+
+# Instalar Docker Compose Plugin (v2) si no está disponible
+if ! docker compose version &> /dev/null; then
+    log_info "Instalando Docker Compose..."
+    sudo apt install -y docker-compose-plugin || sudo apt install -y docker-compose
+    log_success "Docker Compose instalado correctamente."
+else
+    log_info "Docker Compose ya está instalado. Versión:"
+    docker compose version || docker-compose --version
+fi
+
+# ------------------------------
+# 2. Habilitar el servicio de Docker
+# ------------------------------
+log_info "Habilitando y arrancando servicio Docker..."
+sudo systemctl enable docker --now
+
+# Verificar que Docker está corriendo
+if ! sudo systemctl is-active --quiet docker; then
+    log_error "Docker no se pudo iniciar correctamente."
+    exit 1
+fi
+
+log_success "Servicio Docker está activo."
+
+# ------------------------------
+# 3. Configurar permisos de Docker
+# ------------------------------
+log_info "Configurando permisos de Docker para el usuario actual..."
+
+# Verificar si el usuario ya está en el grupo docker
+if groups $USER | grep -q '\bdocker\b'; then
+    log_info "El usuario ya pertenece al grupo docker."
+else
+    log_info "Agregando usuario al grupo docker..."
+    sudo usermod -aG docker $USER
+    log_success "Usuario agregado al grupo docker."
+fi
+
+# ------------------------------
+# 4. Instalar Airbyte CLI (abctl)
+# ------------------------------
+log_info "Instalando Airbyte CLI (abctl)..."
+
+if check_command abctl; then
+    log_info "abctl ya está instalado. Versión actual:"
+    abctl version
+    read -p "¿Deseas reinstalar abctl? (s/N): " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Ss]$ ]]; then
+        log_info "Saltando instalación de abctl."
+    else
+        curl -LsfS https://get.airbyte.com | bash -
+        log_success "abctl reinstalado correctamente."
+    fi
+else
+    curl -LsfS https://get.airbyte.com | bash -
+    log_success "abctl instalado correctamente."
+fi
+
+# Validar instalación de Airbyte CLI
+log_info "Validando instalación de abctl..."
+abctl version
+
+# ------------------------------
+# 5. Instalar Airbyte Core en el entorno local
+# ------------------------------
+log_info "Verificando instalación existente de Airbyte..."
+
+# Verificar si Airbyte ya está instalado
+if docker ps --format '{{.Names}}' 2>/dev/null | grep -q 'airbyte-abctl'; then
+    log_info "Se detectó una instalación existente de Airbyte."
+    echo ""
+    echo "Opciones disponibles:"
+    echo "  1) Mantener instalación actual y salir"
+    echo "  2) Desinstalar y reinstalar limpiamente (BORRARÁ TODOS LOS DATOS)"
+    echo "  3) Intentar reparar instalación actual"
+    echo ""
+    read -p "Selecciona una opción [1-3]: " -n 1 -r
+    echo
+    
+    case $REPLY in
+        2)
+            log_info "Desinstalando Airbyte existente..."
+            abctl local uninstall || true
+            
+            log_info "Limpiando archivos de configuración y datos..."
+            sudo rm -rf ~/.airbyte/abctl/data || true
+            
+            log_info "Esperando a que se complete la desinstalación..."
+            sleep 5
+            
+            log_success "Desinstalación completada. Procediendo con instalación limpia..."
+            ;;
+        3)
+            log_info "Intentando reparar permisos..."
+            sudo chown -R $USER:$USER ~/.airbyte/abctl/data 2>/dev/null || true
+            log_info "Reparación completada. Intentando continuar con instalación..."
+            ;;
+        1|*)
+            log_info "Manteniendo instalación actual."
+            echo ""
+            log_info "Airbyte está ejecutándose en: http://localhost:8000"
+            log_info "Para ver credenciales ejecuta: abctl local credentials"
+            log_info "Para ver estado ejecuta: abctl local status"
+            exit 0
+            ;;
+    esac
+fi
+
+log_info "Instalando Airbyte Core en el entorno local..."
+log_info "Este proceso puede tardar varios minutos..."
+
+# Función para instalar Airbyte con permisos de Docker
+install_airbyte() {
+    # Establecer BROWSER=echo para evitar que intente abrir el navegador automáticamente
+    export BROWSER=echo
+    
+    # Intentar primero sin sudo (si el usuario ya tiene permisos de docker activos)
+    if docker ps &> /dev/null; then
+        abctl local install --no-browser 2>/dev/null || abctl local install
+    else
+        # Si no tiene permisos activos, usar newgrp para aplicar el grupo docker
+        log_info "Aplicando permisos del grupo docker..."
+        sg docker -c "BROWSER=echo abctl local install --no-browser 2>/dev/null || abctl local install"
+    fi
+}
+
+install_airbyte
+log_success "Airbyte Core instalado correctamente."
+
+# -------------------------------
+# 6. Mostrar credenciales de Airbyte
+# -------------------------------
+log_info "Obteniendo credenciales de Airbyte..."
+
+if docker ps &> /dev/null; then
+    abctl local credentials
+else
+    sg docker -c "abctl local credentials"
+fi
+
+# -------------------------------
+# Finalización
+# -------------------------------
+echo ""
+echo "========================================="
+log_success "¡Airbyte se ha instalado correctamente!"
+echo "========================================="
+echo ""
+log_info "Accede a Airbyte en: http://localhost:8000"
+echo ""
+log_info "IMPORTANTE: En el primer acceso deberás:"
+log_info "  1. Ingresar tu correo electrónico"
+log_info "  2. Usar la contraseña mostrada arriba para iniciar sesión"
+echo ""
+log_info "NOTA: Si experimentas problemas con permisos de Docker en esta sesión,"
+log_info "      cierra y abre una nueva terminal para que los cambios de grupo se apliquen completamente."
+echo ""
+log_info "Comandos útiles:"
+echo "  - Ver estado: abctl local status"
+echo "  - Detener: abctl local uninstall"
+echo "  - Ver credenciales: abctl local credentials"
+echo ""
+
+
+# Comandos de desinstalación manual (si es necesario):
+# ----------------------------------
+# 1. Desinstalar completamente:
+#   abctl local uninstall
+
+# 2. Limpiar archivos de configuración y datos (ADVERTENCIA: BORRARÁ TODOS LOS DATOS):
+#   sudo rm -rf ~/.airbyte/abctl/data
+
+# 3. Verificar que no queden contenedores o volúmenes residuales:
+#   docker ps -a | grep airbyte
+#   docker volume ls | grep airbyte
+
+# 4. Eliminar contenedores o volúmenes residuales (si es necesario):
+#   docker rm -f <container_id>
+#   docker volume rm <volume_name>
+
+# 5. Reinstalar con el script después de limpiar:
+#   ./airbyte-setup.sh

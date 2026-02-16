@@ -1,0 +1,44 @@
+# Archivos temporales
+*.bak
+*.log
+*.tmp
+*~
+
+# Backups de Airbyte
+airbyte-backups/
+
+# Datos de instalación local
+.abctl/
+airbyte-data/
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# IDE / Editores
+.vscode/
+.idea/
+*.swp
+*.swo
+.vs/
+
+# Archivos de configuración local
+.env
+.env.local
+local-config.yaml
