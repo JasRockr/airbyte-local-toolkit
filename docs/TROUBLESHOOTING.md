@@ -529,6 +529,41 @@ abctl local uninstall
 ./airbyte-setup.sh
 ```
 
+### La pantalla `/setup` muestra un error de render
+
+**Síntomas:**
+
+- La UI local responde, pero la ruta `http://localhost:8000/setup` muestra un error de JavaScript o una pantalla en blanco
+- El backend y el cluster pueden seguir activos aunque la vista no cargue bien
+
+**Causa habitual:**
+
+- Caché del navegador, sesión previa corrupta o assets frontend desincronizados en esa versión de Airbyte
+
+**Qué probar primero:**
+
+```bash
+# Abrir una ventana privada/incógnito y volver a entrar
+# o
+# Limpiar datos del sitio para localhost:18080
+# o
+# Probar con otro navegador
+```
+
+**Si el cluster está bien pero la UI sigue fallando:**
+
+```bash
+# Verificar estado del backend
+./scripts/airbyte-management.sh status
+
+# Reiniciar Airbyte sin tocar la instalación
+./scripts/airbyte-management.sh restart
+```
+
+**Nota:**
+
+- Si la UI sigue fallando después de limpiar caché y reiniciar, probablemente sea un problema de la versión del frontend y no del script de instalación.
+
 ---
 
 ### Airbyte se detiene después de un tiempo

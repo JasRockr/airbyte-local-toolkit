@@ -12,6 +12,25 @@ COMPOSE_CMD=()
 AIRBYTE_PORT_FILE="$HOME/.airbyte/abctl/airbyte-port"
 AIRBYTE_PORT=8000
 
+USE_COLORS=0
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ -z "${CI:-}" ]; then
+    USE_COLORS=1
+fi
+
+if [ "$USE_COLORS" -eq 1 ]; then
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[1;33m'
+    BLUE='\033[0;34m'
+    NC='\033[0m'
+else
+    RED=''
+    GREEN=''
+    YELLOW=''
+    BLUE=''
+    NC=''
+fi
+
 is_wsl2() {
     grep -qi microsoft /proc/version 2>/dev/null || uname -r | grep -qi microsoft
 }
@@ -105,19 +124,19 @@ NC='\033[0m' # No Color
 
 # Funciones de utilidad
 print_info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
+    printf '%b\n' "${BLUE}[INFO]${NC} $1"
 }
 
 print_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
+    printf '%b\n' "${GREEN}[SUCCESS]${NC} $1"
 }
 
 print_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
+    printf '%b\n' "${YELLOW}[WARNING]${NC} $1"
 }
 
 print_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+    printf '%b\n' "${RED}[ERROR]${NC} $1"
 }
 
 print_header() {

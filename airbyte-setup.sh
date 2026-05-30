@@ -17,16 +17,78 @@ set -o pipefail  # Detectar errores en pipes
 # ----------------------------------------
 # Funciones auxiliares
 # ----------------------------------------
+USE_COLORS=0
+USE_SPINNER=0
+
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ -z "${CI:-}" ]; then
+    USE_COLORS=1
+    USE_SPINNER=1
+fi
+
+if [ "$USE_COLORS" -eq 1 ]; then
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[1;33m'
+    BLUE='\033[0;34m'
+    NC='\033[0m'
+else
+    RED=''
+    GREEN=''
+    YELLOW=''
+    BLUE=''
+    NC=''
+fi
+
 log_info() {
-    echo "[INFO] $(date '+%Y-%m-%d %H:%M:%S') - $1"
+    printf '%b\n' "${BLUE}[INFO]${NC} $(date '+%Y-%m-%d %H:%M:%S') - $1"
 }
 
 log_error() {
-    echo "[ERROR] $(date '+%Y-%m-%d %H:%M:%S') - $1" >&2
+    printf '%b\n' "${RED}[ERROR]${NC} $(date '+%Y-%m-%d %H:%M:%S') - $1" >&2
 }
 
 log_success() {
-    echo "[SUCCESS] $(date '+%Y-%m-%d %H:%M:%S') - $1"
+    printf '%b\n' "${GREEN}[SUCCESS]${NC} $(date '+%Y-%m-%d %H:%M:%S') - $1"
+}
+
+run_with_spinner() {
+    local message="$1"
+    shift
+
+    if [ "$USE_SPINNER" -ne 1 ]; then
+        "$@"
+        return $?
+    fi
+
+    local spinner_chars='|/-\\'
+    local spinner_pid
+    local exit_code=0
+
+    printf '%b\n' "${BLUE}[INFO]${NC} $message"
+
+    (
+        "$@"
+    ) &
+    spinner_pid=$!
+
+    while kill -0 "$spinner_pid" 2>/dev/null; do
+        for char in $(printf '%s' "$spinner_chars" | fold -w1); do
+            if ! kill -0 "$spinner_pid" 2>/dev/null; then
+                break
+            fi
+            printf '\r%b[INFO]%b %s %s' "$BLUE" "$NC" "$char" "$message"
+            sleep 0.1
+        done
+    done
+
+    wait "$spinner_pid" || exit_code=$?
+    printf '\r\033[K'
+
+    if [ "$exit_code" -eq 0 ]; then
+        printf '%b\n' "${GREEN}[SUCCESS]${NC} $message"
+    fi
+
+    return "$exit_code"
 }
 
 check_command() {
@@ -188,10 +250,9 @@ log_success "Verificaciones previas completadas."
 # ----------------------------------------
 # 1. Actualizar el sistema e instalar dependencias
 # ----------------------------------------
-log_info "Actualizando sistema e instalando dependencias..."
-sudo apt update
-sudo apt upgrade -y
-sudo apt install -y curl git
+run_with_spinner "Actualizando sistema e instalando dependencias" sudo apt update
+run_with_spinner "Actualizando paquetes del sistema" sudo apt upgrade -y
+run_with_spinner "Instalando curl y git" sudo apt install -y curl git
 
 # Verificar si Docker ya está instalado
 if check_command docker; then
@@ -199,7 +260,7 @@ if check_command docker; then
     docker --version
 else
     log_info "Instalando Docker..."
-    sudo apt install -y docker.io
+    run_with_spinner "Instalando Docker" sudo apt install -y docker.io
     log_success "Docker instalado correctamente."
 fi
 
@@ -217,7 +278,7 @@ prepare_wsl2_docker_config
 # Instalar Docker Compose Plugin (v2) si no está disponible
 if ! configure_compose_command; then
     log_info "Instalando Docker Compose..."
-    sudo apt install -y docker-compose-plugin || sudo apt install -y docker-compose
+    run_with_spinner "Instalando Docker Compose" bash -lc 'sudo apt install -y docker-compose-plugin || sudo apt install -y docker-compose'
     log_success "Docker Compose instalado correctamente."
 else
     log_info "Docker Compose ya está instalado. Versión:"
@@ -275,7 +336,7 @@ if check_command abctl; then
         log_success "abctl reinstalado correctamente."
     fi
 else
-    curl -LsfS https://get.airbyte.com | bash -
+    run_with_spinner "Instalando Airbyte CLI (abctl)" bash -lc 'set -o pipefail; curl -LsfS https://get.airbyte.com | bash -'
     log_success "abctl instalado correctamente."
 fi
 
@@ -347,11 +408,11 @@ install_airbyte() {
     
     # Intentar primero con acceso directo al daemon desde la sesión actual
     if docker ps &> /dev/null; then
-        abctl local install --no-browser --port "$AIRBYTE_PORT" 2>/dev/null || abctl local install --port "$AIRBYTE_PORT"
+        run_with_spinner "Instalando Airbyte Core en el entorno local" bash -lc "abctl local install --no-browser --port '$AIRBYTE_PORT' 2>/dev/null || abctl local install --port '$AIRBYTE_PORT'"
     elif getent group docker >/dev/null 2>&1 && sudo docker ps &> /dev/null; then
         # Si el usuario pertenece al grupo docker pero la sesión aún no lo refleja, ejecutamos el comando en ese grupo
         log_info "Aplicando permisos del grupo docker..."
-        sg docker -c "BROWSER=echo abctl local install --no-browser --port '$AIRBYTE_PORT' 2>/dev/null || abctl local install --port '$AIRBYTE_PORT'"
+        run_with_spinner "Instalando Airbyte Core en el entorno local" sg docker -c "BROWSER=echo abctl local install --no-browser --port '$AIRBYTE_PORT' 2>/dev/null || abctl local install --port '$AIRBYTE_PORT'"
     else
         log_error "No hay acceso operativo a Docker para ejecutar abctl."
         return 1
