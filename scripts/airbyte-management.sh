@@ -9,6 +9,8 @@ set -e
 # Configuración de detección de Docker/Compose (multiplataforma)
 DOCKER_CMD=(docker)
 COMPOSE_CMD=()
+AIRBYTE_PORT_FILE="$HOME/.airbyte/abctl/airbyte-port"
+AIRBYTE_PORT=8000
 
 is_wsl2() {
     grep -qi microsoft /proc/version 2>/dev/null || uname -r | grep -qi microsoft
@@ -67,6 +69,33 @@ configure_compose_command() {
     return 1
 }
 
+get_airbyte_port() {
+    local detected_port
+
+    if [ -f "$AIRBYTE_PORT_FILE" ]; then
+        detected_port=$(tr -d '[:space:]' < "$AIRBYTE_PORT_FILE")
+        if [ -n "$detected_port" ]; then
+            AIRBYTE_PORT="$detected_port"
+            return 0
+        fi
+    fi
+
+    if run_docker ps --format '{{.Names}}' 2>/dev/null | grep -q 'airbyte-abctl'; then
+        detected_port=$(run_docker port airbyte-abctl-server 8000/tcp 2>/dev/null | head -n1 | awk -F: '{print $NF}')
+        if [ -n "$detected_port" ]; then
+            AIRBYTE_PORT="$detected_port"
+            return 0
+        fi
+    fi
+
+    AIRBYTE_PORT=8000
+    return 1
+}
+
+airbyte_url() {
+    echo "http://localhost:${AIRBYTE_PORT}"
+}
+
 # Colores para output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -109,7 +138,8 @@ start_airbyte() {
     # Verificar si ya está corriendo
     if run_docker ps --format '{{.Names}}' 2>/dev/null | grep -q 'airbyte-abctl'; then
         print_warning "Airbyte ya está en ejecución"
-        print_info "URL: http://localhost:8000"
+        get_airbyte_port >/dev/null 2>&1 || true
+        print_info "URL: $(airbyte_url)"
         return 0
     fi
     
@@ -136,7 +166,8 @@ start_airbyte() {
     fi
     
     print_success "Airbyte iniciado correctamente"
-    print_info "Accede en: http://localhost:8000"
+    get_airbyte_port >/dev/null 2>&1 || true
+    print_info "Accede en: $(airbyte_url)"
 }
 
 stop_airbyte() {
@@ -214,7 +245,8 @@ get_credentials() {
     fi
     
     echo ""
-    print_info "URL de acceso: http://localhost:8000"
+    get_airbyte_port >/dev/null 2>&1 || true
+    print_info "URL de acceso: $(airbyte_url)"
 }
 
 # ============================================================================
@@ -422,11 +454,12 @@ troubleshoot() {
     echo ""
     
     # Puertos
-    print_info "4. Verificando puerto 8000..."
-    if netstat -tuln 2>/dev/null | grep -q ':8000' || ss -tuln 2>/dev/null | grep -q ':8000'; then
-        print_success "Puerto 8000 está en uso (Airbyte escuchando)"
+    get_airbyte_port >/dev/null 2>&1 || true
+    print_info "4. Verificando puerto ${AIRBYTE_PORT}..."
+    if netstat -tuln 2>/dev/null | grep -q ":${AIRBYTE_PORT}" || ss -tuln 2>/dev/null | grep -q ":${AIRBYTE_PORT}"; then
+        print_success "Puerto ${AIRBYTE_PORT} está en uso (Airbyte escuchando)"
     else
-        print_warning "Puerto 8000 no está en uso"
+        print_warning "Puerto ${AIRBYTE_PORT} no está en uso"
     fi
     
     echo ""
@@ -465,7 +498,8 @@ test_api() {
     
     # Test de conexión
     print_info "Probando endpoint /health..."
-    RESPONSE=$(curl -s http://localhost:8000/api/v1/health)
+    get_airbyte_port >/dev/null 2>&1 || true
+    RESPONSE=$(curl -s "$(airbyte_url)/api/v1/health")
     
     if echo "$RESPONSE" | grep -q "available"; then
         print_success "API está respondiendo correctamente"

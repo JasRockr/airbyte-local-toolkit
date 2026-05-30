@@ -35,6 +35,7 @@ chmod +x airbyte-management.sh
 
 ```bash
 # URL de la interfaz web
+# Usa el puerto elegido por el instalador si 8000 estaba ocupado
 http://localhost:8000
 
 # Obtener credenciales

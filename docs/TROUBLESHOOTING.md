@@ -156,6 +156,8 @@ exit
 
 ### Puerto 8000 ya está en uso
 
+Si el instalador detecta que 8000 está ocupado, probará un puerto alterno libre y guardará la elección en `~/.airbyte/abctl/airbyte-port`.
+
 **Síntomas:**
 
 - Airbyte no puede iniciar

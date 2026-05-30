@@ -99,6 +99,52 @@ configure_compose_command() {
     return 1
 }
 
+AIRBYTE_PORT_FILE="$HOME/.airbyte/abctl/airbyte-port"
+AIRBYTE_PORT=8000
+
+is_port_available() {
+    local port="$1"
+
+    if command -v ss >/dev/null 2>&1 && ss -tuln 2>/dev/null | grep -q ":${port} "; then
+        return 1
+    fi
+
+    if command -v netstat >/dev/null 2>&1 && netstat -tuln 2>/dev/null | grep -q ":${port} "; then
+        return 1
+    fi
+
+    return 0
+}
+
+select_airbyte_port() {
+    local candidate
+    local candidates=(8000 18080 19080 28080 38080 48080)
+
+    for candidate in "${candidates[@]}"; do
+        if is_port_available "$candidate"; then
+            AIRBYTE_PORT="$candidate"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+save_airbyte_port() {
+    mkdir -p "$HOME/.airbyte/abctl"
+    printf '%s\n' "$AIRBYTE_PORT" > "$AIRBYTE_PORT_FILE"
+}
+
+load_airbyte_port() {
+    if [ -f "$AIRBYTE_PORT_FILE" ]; then
+        local saved_port
+        saved_port=$(tr -d '[:space:]' < "$AIRBYTE_PORT_FILE")
+        if [ -n "$saved_port" ]; then
+            AIRBYTE_PORT="$saved_port"
+        fi
+    fi
+}
+
 # ----------------------------------------
 # Verificaciones previas
 # ----------------------------------------
@@ -218,6 +264,7 @@ abctl version
 # 5. Instalar Airbyte Core en el entorno local
 # ------------------------------
 log_info "Verificando instalación existente de Airbyte..."
+load_airbyte_port
 
 # Verificar si Airbyte ya está instalado
 if run_docker ps --format '{{.Names}}' 2>/dev/null | grep -q 'airbyte-abctl'; then
@@ -252,7 +299,7 @@ if run_docker ps --format '{{.Names}}' 2>/dev/null | grep -q 'airbyte-abctl'; th
         1|*)
             log_info "Manteniendo instalación actual."
             echo ""
-            log_info "Airbyte está ejecutándose en: http://localhost:8000"
+            log_info "Airbyte está ejecutándose en: http://localhost:${AIRBYTE_PORT}"
             log_info "Para ver credenciales ejecuta: abctl local credentials"
             log_info "Para ver estado ejecuta: abctl local status"
             exit 0
@@ -262,6 +309,13 @@ fi
 
 log_info "Instalando Airbyte Core en el entorno local..."
 log_info "Este proceso puede tardar varios minutos..."
+if ! select_airbyte_port; then
+    log_error "No se encontró un puerto libre para Airbyte. Libera 8000 o un puerto alterno y vuelve a intentarlo."
+    exit 1
+fi
+
+log_info "Puerto de acceso seleccionado: $AIRBYTE_PORT"
+save_airbyte_port
 
 # Función para instalar Airbyte con permisos de Docker
 install_airbyte() {
@@ -270,11 +324,11 @@ install_airbyte() {
     
     # Intentar primero con acceso directo al daemon desde la sesión actual
     if docker ps &> /dev/null; then
-        abctl local install --no-browser 2>/dev/null || abctl local install
+        abctl local install --no-browser --port "$AIRBYTE_PORT" 2>/dev/null || abctl local install --port "$AIRBYTE_PORT"
     elif getent group docker >/dev/null 2>&1 && sudo docker ps &> /dev/null; then
         # Si el usuario pertenece al grupo docker pero la sesión aún no lo refleja, ejecutamos el comando en ese grupo
         log_info "Aplicando permisos del grupo docker..."
-        sg docker -c "BROWSER=echo abctl local install --no-browser 2>/dev/null || abctl local install"
+        sg docker -c "BROWSER=echo abctl local install --no-browser --port '$AIRBYTE_PORT' 2>/dev/null || abctl local install --port '$AIRBYTE_PORT'"
     else
         log_error "No hay acceso operativo a Docker para ejecutar abctl."
         return 1
@@ -306,7 +360,7 @@ echo "========================================="
 log_success "¡Airbyte se ha instalado correctamente!"
 echo "========================================="
 echo ""
-log_info "Accede a Airbyte en: http://localhost:8000"
+log_info "Accede a Airbyte en: http://localhost:${AIRBYTE_PORT}"
 echo ""
 log_info "IMPORTANTE: En el primer acceso deberás:"
 log_info "  1. Ingresar tu correo electrónico"

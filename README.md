@@ -25,7 +25,7 @@ chmod +x airbyte-setup.sh scripts/airbyte-management.sh
 ./scripts/airbyte-management.sh credentials
 ```
 
-- Abre `http://localhost:8000`
+- Abre la URL que te indique el instalador o el script de gestión; si `8000` estaba ocupado, se habrá elegido otro puerto libre automáticamente
 - Usa el correo que quieras registrar en el primer acceso
 - La contraseña es la que te muestra el comando de credenciales
 
@@ -52,6 +52,8 @@ chmod +x airbyte-setup.sh scripts/airbyte-management.sh
 1. Primero revisa los pre-requisitos si aún no confirmaste tu entorno.
 2. Luego usa el flujo de inicio rápido para instalar y validar.
 3. Después entra en la documentación detallada si necesitas ajustar, depurar o automatizar.
+
+> El instalador guarda el puerto elegido en `~/.airbyte/abctl/airbyte-port` para que el script de gestión pueda reutilizarlo.
 
 ---
 
