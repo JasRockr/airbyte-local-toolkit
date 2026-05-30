@@ -1,15 +1,21 @@
-# Guía Completa de Airbyte para Data Engineers
+# Guía Completa de Airbyte para Ingeniería de Datos
 
 ## 📋 Índice
 
-- [Comandos Básicos](#comandos-básicos)
-- [Gestión de Servicios](#gestión-de-servicios)
-- [API y Automatización](#api-y-automatización)
-- [Backups y Recuperación](#backups-y-recuperación)
-- [Monitoreo y Logs](#monitoreo-y-logs)
-- [Optimización y Troubleshooting](#optimización-y-troubleshooting)
-- [Integración CI/CD](#integración-cicd)
-- [Comandos Avanzados](#comandos-avanzados)
+- [Instalación Inicial](#instalación-inicial)
+- [Acceso Rápido](#acceso-rápido)
+- [Comandos Básicos](#-comandos-básicos)
+- [Gestión de Servicios](#-gestión-de-servicios)
+- [API y Automatización](#-api-y-automatización)
+- [Backups y Recuperación](#-backups-y-recuperación)
+- [Monitoreo y Logs](#-monitoreo-y-logs)
+- [Optimización y Troubleshooting](#-optimización-y-troubleshooting)
+- [Actualizaciones](#-actualizaciones)
+- [Integración CI/CD](#-integración-cicd)
+- [Comandos Avanzados](#️-comandos-avanzados)
+- [Referencias Rápidas](#-referencias-rápidas)
+- [Soporte y Recursos](#-soporte-y-recursos)
+- [Notas Finales](#-notas-finales)
 
 ---
 
@@ -286,10 +292,10 @@ tar -xzf airbyte-backup-20260215.tar.gz -C ~/
 crontab -e
 
 # Agregar backup diario a las 2 AM
-0 2 * * * /home/jasrockr/json/dev/test-airbyte/airbyte-management.sh backup >> /var/log/airbyte-backup.log 2>&1
+0 2 * * * /path/to/airbyte-local-toolkit/scripts/airbyte-management.sh backup >> /var/log/airbyte-backup.log 2>&1
 
 # Backup semanal con limpieza
-0 3 * * 0 /home/jasrockr/json/dev/test-airbyte/airbyte-management.sh backup && find ~/airbyte-backups -name "*.tar.gz" -mtime +30 -delete
+0 3 * * 0 /path/to/airbyte-local-toolkit/scripts/airbyte-management.sh backup && find ~/airbyte-backups -name "*.tar.gz" -mtime +30 -delete
 ```
 
 ### Exportar/Importar Configuraciones

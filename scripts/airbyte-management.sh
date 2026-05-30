@@ -1,10 +1,71 @@
 #!/bin/bash
 # ============================================================================
 # Airbyte Local Management Script
-# Gestión completa de Airbyte para Data Engineers
+# Gestión completa de Airbyte para Ingeniería de Datos
 # ============================================================================
 
 set -e
+
+# Configuración de detección de Docker/Compose (multiplataforma)
+DOCKER_CMD=(docker)
+COMPOSE_CMD=()
+
+is_wsl2() {
+    grep -qi microsoft /proc/version 2>/dev/null || uname -r | grep -qi microsoft
+}
+
+run_docker() {
+    "${DOCKER_CMD[@]}" "$@"
+}
+
+check_command() {
+    command -v "$1" &> /dev/null
+}
+
+configure_docker_access() {
+    if run_docker ps >/dev/null 2>&1; then
+        DOCKER_CMD=(docker)
+        return 0
+    fi
+
+    if check_command sudo && sudo docker ps >/dev/null 2>&1; then
+        DOCKER_CMD=(sudo docker)
+        return 0
+    fi
+
+    if ! is_wsl2 && check_command sudo; then
+        echo "[INFO] Intentando activar servicio Docker..."
+        sudo systemctl enable docker --now || true
+        if run_docker ps >/dev/null 2>&1; then
+            DOCKER_CMD=(docker)
+            return 0
+        fi
+        if sudo docker ps >/dev/null 2>&1; then
+            DOCKER_CMD=(sudo docker)
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+configure_compose_command() {
+    if run_docker compose version >/dev/null 2>&1; then
+        COMPOSE_CMD=("${DOCKER_CMD[@]}" compose)
+        return 0
+    fi
+
+    if check_command docker-compose; then
+        if [ "${DOCKER_CMD[0]}" = "sudo" ]; then
+            COMPOSE_CMD=(sudo docker-compose)
+        else
+            COMPOSE_CMD=(docker-compose)
+        fi
+        return 0
+    fi
+
+    return 1
+}
 
 # Colores para output
 RED='\033[0;31m'
@@ -46,7 +107,7 @@ start_airbyte() {
     print_header "Iniciando Airbyte"
     
     # Verificar si ya está corriendo
-    if docker ps --format '{{.Names}}' 2>/dev/null | grep -q 'airbyte-abctl'; then
+    if run_docker ps --format '{{.Names}}' 2>/dev/null | grep -q 'airbyte-abctl'; then
         print_warning "Airbyte ya está en ejecución"
         print_info "URL: http://localhost:8000"
         return 0
@@ -54,16 +115,20 @@ start_airbyte() {
     
     print_info "Iniciando servicios de Airbyte..."
     
-    # Verificar que Docker esté corriendo
-    if ! sudo systemctl is-active --quiet docker; then
-        print_info "Iniciando Docker..."
-        sudo systemctl start docker
+    # Verificar que Docker esté corriendo (solo en Linux nativo)
+    if ! is_wsl2; then
+        if ! sudo systemctl is-active --quiet docker; then
+            print_info "Iniciando Docker..."
+            sudo systemctl start docker
+        fi
+    else
+        print_info "WSL2 detectado: asumiendo que Docker está gestionado por Docker Desktop o por la distro."
     fi
     
     # Iniciar el cluster de Kubernetes (kind)
-    if docker ps -a --format '{{.Names}}' | grep -q 'airbyte-abctl-control-plane'; then
+    if run_docker ps -a --format '{{.Names}}' | grep -q 'airbyte-abctl-control-plane'; then
         print_info "Iniciando cluster existente..."
-        docker start airbyte-abctl-control-plane
+        run_docker start airbyte-abctl-control-plane
         sleep 5
     else
         print_error "No se encontró instalación de Airbyte. Ejecuta primero ./airbyte-setup.sh"
@@ -77,7 +142,7 @@ start_airbyte() {
 stop_airbyte() {
     print_header "Deteniendo Airbyte"
     
-    if ! docker ps --format '{{.Names}}' | grep -q 'airbyte-abctl'; then
+    if ! run_docker ps --format '{{.Names}}' | grep -q 'airbyte-abctl'; then
         print_warning "Airbyte no está en ejecución"
         return 0
     fi
@@ -85,8 +150,8 @@ stop_airbyte() {
     print_info "Deteniendo servicios de Airbyte..."
     
     # Detener el cluster
-    if docker ps --format '{{.Names}}' | grep -q 'airbyte-abctl-control-plane'; then
-        docker stop airbyte-abctl-control-plane
+    if run_docker ps --format '{{.Names}}' | grep -q 'airbyte-abctl-control-plane'; then
+        run_docker stop airbyte-abctl-control-plane
     fi
     
     print_success "Airbyte detenido correctamente"
@@ -103,20 +168,20 @@ status_airbyte() {
     print_header "Estado de Airbyte"
     
     # Verificar Docker
-    if sudo systemctl is-active --quiet docker; then
-        print_success "Docker: Activo"
+    if run_docker ps >/dev/null 2>&1; then
+        print_success "Docker: Accesible"
     else
-        print_error "Docker: Inactivo"
+        print_error "Docker: No accesible desde esta sesión"
     fi
     
     # Verificar contenedor principal
-    if docker ps --format '{{.Names}}' | grep -q 'airbyte-abctl-control-plane'; then
+    if run_docker ps --format '{{.Names}}' | grep -q 'airbyte-abctl-control-plane'; then
         print_success "Airbyte Cluster: En ejecución"
         
         # Mostrar recursos
         echo ""
         print_info "Contenedores de Airbyte:"
-        docker ps --filter "name=airbyte" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+        run_docker ps --filter "name=airbyte" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
         
         # Estado del cluster con abctl
         if command -v abctl &> /dev/null; then
@@ -131,7 +196,7 @@ status_airbyte() {
     # Uso de recursos
     echo ""
     print_info "Uso de recursos:"
-    docker stats --no-stream --filter "name=airbyte" --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}" 2>/dev/null || print_warning "No hay contenedores de Airbyte corriendo"
+    run_docker stats --no-stream --filter "name=airbyte" --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}" 2>/dev/null || print_warning "No hay contenedores de Airbyte corriendo"
 }
 
 # ============================================================================
@@ -274,7 +339,7 @@ update_airbyte() {
 view_logs() {
     print_header "Logs de Airbyte"
     
-    if ! docker ps --format '{{.Names}}' | grep -q 'airbyte-abctl'; then
+    if ! run_docker ps --format '{{.Names}}' | grep -q 'airbyte-abctl'; then
         print_error "Airbyte no está en ejecución"
         return 1
     fi
@@ -290,21 +355,21 @@ view_logs() {
     
     case $REPLY in
         1)
-            docker logs airbyte-abctl-control-plane --tail 100
+            run_docker logs airbyte-abctl-control-plane --tail 100
             ;;
         2)
-            docker exec airbyte-abctl-control-plane kubectl logs -n airbyte-abctl --all-containers=true --tail=50
+            run_docker exec airbyte-abctl-control-plane kubectl logs -n airbyte-abctl --all-containers=true --tail=50
             ;;
         3)
             print_info "Pods disponibles:"
-            docker exec airbyte-abctl-control-plane kubectl get pods -n airbyte-abctl
+            run_docker exec airbyte-abctl-control-plane kubectl get pods -n airbyte-abctl
             echo ""
             read -p "Nombre del pod: " POD_NAME
-            docker exec airbyte-abctl-control-plane kubectl logs -n airbyte-abctl "$POD_NAME" --tail=100
+            run_docker exec airbyte-abctl-control-plane kubectl logs -n airbyte-abctl "$POD_NAME" --tail=100
             ;;
         4)
             print_info "Siguiendo logs del cluster (Ctrl+C para salir)..."
-            docker logs -f airbyte-abctl-control-plane
+            run_docker logs -f airbyte-abctl-control-plane
             ;;
         *)
             print_error "Opción inválida"
@@ -317,24 +382,28 @@ troubleshoot() {
     
     # Docker
     print_info "1. Verificando Docker..."
-    if sudo systemctl is-active --quiet docker; then
-        print_success "Docker está corriendo"
-        docker version --format 'Versión: {{.Server.Version}}'
+    if run_docker ps >/dev/null 2>&1; then
+        print_success "Docker está accesible"
+        run_docker version --format 'Versión: {{.Server.Version}}' 2>/dev/null || true
     else
-        print_error "Docker no está corriendo"
-        print_info "Intenta: sudo systemctl start docker"
+        print_error "Docker no está accesible desde esta sesión"
+        if ! is_wsl2; then
+            print_info "Intenta: sudo systemctl start docker"
+        else
+            print_info "En WSL2 asegúrate de que Docker Desktop tenga la integración habilitada o que el daemon esté disponible en la distro."
+        fi
     fi
     
     echo ""
     
     # Cluster
     print_info "2. Verificando cluster de Airbyte..."
-    if docker ps --format '{{.Names}}' | grep -q 'airbyte-abctl-control-plane'; then
+    if run_docker ps --format '{{.Names}}' | grep -q 'airbyte-abctl-control-plane'; then
         print_success "Cluster está corriendo"
         
         # Verificar pods
         print_info "Estado de los pods:"
-        docker exec airbyte-abctl-control-plane kubectl get pods -n airbyte-abctl 2>/dev/null || print_error "No se pudo obtener estado de pods"
+        run_docker exec airbyte-abctl-control-plane kubectl get pods -n airbyte-abctl 2>/dev/null || print_error "No se pudo obtener estado de pods"
     else
         print_error "Cluster no está corriendo"
         print_info "Intenta: $0 start"
@@ -513,8 +582,13 @@ enable_autostart() {
     
     SERVICE_FILE="/etc/systemd/system/airbyte-local.service"
     
+    if is_wsl2; then
+        print_error "Auto-inicio no soportado en WSL2 vía systemd. Configura el arranque en Docker Desktop o en el host nativo."
+        return 1
+    fi
+
     print_info "Creando servicio systemd..."
-    
+
     sudo tee "$SERVICE_FILE" > /dev/null << EOF
 [Unit]
 Description=Airbyte Local Service
@@ -553,6 +627,11 @@ disable_autostart() {
         return 0
     fi
     
+    if is_wsl2; then
+        print_warning "Auto-inicio via systemd no configurado en WSL2. No hay nada que deshabilitar."
+        return 0
+    fi
+
     print_info "Deshabilitando servicio..."
     sudo systemctl disable airbyte-local.service
     sudo systemctl stop airbyte-local.service 2>/dev/null || true
@@ -583,7 +662,7 @@ cleanup_airbyte() {
     case $REPLY in
         1)
             print_info "Limpiando logs..."
-            docker exec airbyte-abctl-control-plane sh -c "find /var/log -name '*.log' -mtime +7 -delete" 2>/dev/null || print_warning "No se pudieron limpiar logs"
+            run_docker exec airbyte-abctl-control-plane sh -c "find /var/log -name '*.log' -mtime +7 -delete" 2>/dev/null || print_warning "No se pudieron limpiar logs"
             print_success "Logs limpiados"
             ;;
         2)
@@ -593,14 +672,14 @@ cleanup_airbyte() {
             ;;
         3)
             print_info "Limpiando imágenes Docker no utilizadas..."
-            docker image prune -a -f --filter "until=720h"
+            run_docker image prune -a -f --filter "until=720h"
             print_success "Imágenes limpiadas"
             ;;
         4)
             print_info "Realizando limpieza completa..."
-            docker exec airbyte-abctl-control-plane sh -c "find /var/log -name '*.log' -mtime +7 -delete" 2>/dev/null || true
+            run_docker exec airbyte-abctl-control-plane sh -c "find /var/log -name '*.log' -mtime +7 -delete" 2>/dev/null || true
             find "$HOME/airbyte-backups" -name "*.tar.gz" -mtime +30 -delete 2>/dev/null || true
-            docker image prune -a -f --filter "until=720h"
+            run_docker image prune -a -f --filter "until=720h"
             print_success "Limpieza completa finalizada"
             ;;
         *)
@@ -614,7 +693,7 @@ cleanup_airbyte() {
 # ============================================================================
 
 show_menu() {
-    print_header "Airbyte Management Tool - Para Data Engineers"
+    print_header "Herramienta de Gestión de Airbyte - Para Ingeniería de Datos"
     
     echo "GESTIÓN DE SERVICIOS:"
     echo "  1)  Iniciar Airbyte"
@@ -654,6 +733,10 @@ show_menu() {
 # ============================================================================
 
 main() {
+    # Resolver acceso a Docker/Compose antes de ejecutar acciones
+    configure_docker_access || print_warning "No se pudo acceder a Docker desde esta sesión; algunas acciones fallarán."
+    configure_compose_command >/dev/null 2>&1 || true
+
     if [ $# -eq 0 ]; then
         # Modo interactivo
         while true; do

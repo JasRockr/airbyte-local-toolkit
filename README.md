@@ -1,19 +1,57 @@
 # Airbyte Local Toolkit
 
-## 📖 Acerca de
+**airbyte-local-toolkit** es una forma guiada de levantar y operar Airbyte en local con una experiencia pensada para WSL2 y Ubuntu/Debian nativos. El objetivo es simple: instalar rápido, verificar que todo quedó bien y luego administrar Airbyte sin tener que recordar comandos dispersos.
 
-**airbyte-local-toolkit** es una solución integral para data engineers que desean ejecutar Airbyte localmente con herramientas de nivel producción. Proporciona instalación automatizada, gestión de operaciones diarias, capacidades de backup/restore, automatización de API y guías detalladas de troubleshooting—todo optimizado para sistemas WSL2 y Ubuntu/Debian nativos.
+## 🚀 Get Started
 
-### ✨ Características principales
+Si quieres llegar a Airbyte funcionando lo antes posible, sigue este flujo:
 
-- 🔧 **Instalación automatizada** - Setup completo de Airbyte con un solo comando
-- 🎛️ **CLI de gestión** - Script interactivo para operaciones diarias (start, stop, restart, status)
-- 💾 **Backup y restauración** - Backups automatizados con retención configurable
-- 🔄 **Actualizaciones seguras** - Update de Airbyte sin perder configuraciones
-- 🌐 **Automatización de API** - Scripts de ejemplo para integración con Python
-- 📊 **Monitoreo y logs** - Troubleshooting y diagnóstico integrados
-- ⚡ **Auto-inicio** - Configuración de systemd para inicio automático
-- 🧹 **Mantenimiento** - Limpieza de logs, backups antiguos e imágenes Docker
+### 1. Prepara el entorno
+
+- Usa WSL2 con Ubuntu 22.04+ en Windows, o Ubuntu/Debian nativo compatible
+- Verifica que tengas al menos 10 GB libres, `sudo` y red estable
+- Si estás en WSL2, confirma que Docker Desktop tenga la integración habilitada o usa Docker Engine dentro de WSL2
+
+### 2. Instala
+
+```bash
+chmod +x airbyte-setup.sh scripts/airbyte-management.sh
+./airbyte-setup.sh
+```
+
+### 3. Entra a Airbyte
+
+```bash
+./scripts/airbyte-management.sh credentials
+```
+
+- Abre `http://localhost:8000`
+- Usa el correo que quieras registrar en el primer acceso
+- La contraseña es la que te muestra el comando de credenciales
+
+### 4. Operación diaria
+
+```bash
+./scripts/airbyte-management.sh status
+./scripts/airbyte-management.sh start
+./scripts/airbyte-management.sh stop
+./scripts/airbyte-management.sh backup
+./scripts/airbyte-management.sh logs
+```
+
+## Qué incluye
+
+- Instalación automatizada de Docker, Docker Compose y Airbyte CLI
+- Gestión diaria con un script unificado para start, stop, status y restart
+- Backups, restauración y actualización segura
+- Diagnóstico y troubleshooting orientados a WSL2 y Linux nativo
+- Ejemplos para automatización con API y Python
+
+## Cómo leer esta guía
+
+1. Primero revisa los pre-requisitos si aún no confirmaste tu entorno.
+2. Luego usa el flujo de inicio rápido para instalar y validar.
+3. Después entra en la documentación detallada si necesitas ajustar, depurar o automatizar.
 
 ---
 
@@ -226,7 +264,7 @@ Los scripts **NO son compatibles** con:
 1. **Rendimiento de I/O**: Trabaja con archivos dentro del sistema de archivos de WSL (`/home/`) y no en Windows (`/mnt/c/`) para mejor rendimiento
 2. **Networking**: El puerto 8000 será accesible desde Windows vía `localhost:8000`
 3. **Recursos**: WSL2 usa virtualización, asegúrate de configurar `.wslconfig` apropiadamente
-4. **Docker Desktop**: NO uses Docker Desktop para Windows con estos scripts - usa Docker dentro de WSL2
+4. **Docker Desktop**: si usas WSL2, Docker Desktop es compatible siempre que la integración con la distro esté habilitada; si prefieres un entorno totalmente autónomo, usa Docker Engine dentro de WSL2
 
 #### Acceso a Archivos desde Windows
 
@@ -247,7 +285,7 @@ Los scripts **NO son compatibles** con:
 3. ✅ Configurar `.wslconfig` (opcional)
 4. ✅ Actualizar paquetes: `sudo apt update && sudo apt upgrade -y`
 5. ✅ Verificar espacio en disco y puertos
-6. ✅ **Continuar con "Guía de Inicio Rápido" abajo** 👇
+6. ✅ Continuar con el bloque de instalación rápida más arriba
 
 **Para Ubuntu/Debian Nativo:**
 
@@ -255,7 +293,7 @@ Los scripts **NO son compatibles** con:
 2. ✅ Actualizar paquetes: `sudo apt update && sudo apt upgrade -y`
 3. ✅ Verificar permisos sudo
 4. ✅ Verificar espacio en disco y puertos
-5. ✅ **Continuar con "Guía de Inicio Rápido" abajo** 👇
+5. ✅ Continuar con el bloque de instalación rápida más arriba
 
 ### 📋 Checklist de Verificación Automatizada
 
@@ -340,7 +378,7 @@ chmod +x scripts/airbyte-management.sh
 
 ### 3. `docs/GUIA-COMANDOS.md`
 
-Guía completa de referencia con todos los comandos, APIs y mejores prácticas para Data Engineers.
+Guía completa de referencia con todos los comandos, APIs y mejores prácticas para Ingeniería de Datos.
 
 **Contenido:**
 
@@ -412,55 +450,7 @@ grep -i "error específico" docs/TROUBLESHOOTING.md
 
 ---
 
-## 🚀 Guía de Inicio Rápido
-
-> **⚠️ IMPORTANTE**: Antes de continuar, asegúrate de haber cumplido con todos los [Pre-requisitos del Sistema](#️-pre-requisitos-del-sistema) descritos arriba. El script verificará algunos requisitos, pero es mejor revisar todo antes de comenzar.
-
-### 1. Instalación Inicial
-
-```bash
-# Clonar o descargar este repositorio
-cd test-airbyte
-
-# Dar permisos de ejecución
-chmod +x airbyte-setup.sh scripts/airbyte-management.sh
-
-# Ejecutar instalación
-./airbyte-setup.sh
-```
-
-### 2. Primer Acceso
-
-```bash
-# Obtener credenciales
-./scripts/airbyte-management.sh credentials
-
-# Acceder a la interfaz web
-# URL: http://localhost:8000
-# Email: (ingresar tu email en el primer acceso)
-# Password: (usar la password mostrada en credenciales)
-```
-
-### 3. Uso Diario
-
-```bash
-# Ver estado
-./scripts/airbyte-management.sh status
-
-# Iniciar/Detener
-./scripts/airbyte-management.sh start
-./scripts/airbyte-management.sh stop
-
-# Crear backup
-./scripts/airbyte-management.sh backup
-
-# Ver logs
-./scripts/airbyte-management.sh logs
-```
-
----
-
-## 📋 Flujo de Trabajo Típico para Data Engineers
+## 📋 Flujo de Trabajo Típico para Ingeniería de Datos
 
 ### Setup Inicial de Conexión
 
@@ -505,8 +495,8 @@ nohup ./monitor.sh &
 # Configurar backup diario con cron
 crontab -e
 
-# Agregar línea:
-# 0 2 * * * /home/jasrockr/json/dev/test-airbyte/scripts/airbyte-management.sh backup
+# Agregar línea (reemplaza /path/to/airbyte-local-toolkit por la ruta real):
+# 0 2 * * * /path/to/airbyte-local-toolkit/scripts/airbyte-management.sh backup
 ```
 
 ---
@@ -825,7 +815,7 @@ Si encuentras bugs o tienes sugerencias de mejora:
 
 Este toolkit es de código abierto. Úsalo y modifícalo según tus necesidades.
 
-Los scripts están diseñados para facilitar el trabajo de Data Engineers con Airbyte en entornos locales y de desarrollo.
+Los scripts están diseñados para facilitar el trabajo de la Ingeniería de Datos con Airbyte en entornos locales y de desarrollo.
 
 ---
 
@@ -862,4 +852,4 @@ Los scripts están diseñados para facilitar el trabajo de Data Engineers con Ai
 
 ---
 
-**¡Listo para comenzar tu journey como Data Engineer con Airbyte! 🚀**  
+**¡Listo para comenzar con Airbyte! 🚀**  

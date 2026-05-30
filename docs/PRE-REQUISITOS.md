@@ -45,7 +45,7 @@ uname -r | grep -i microsoft
 # wsl -l -v
 ```
 
-**✅ Resultado esperado:** Ubuntu 20.04+, Debian 11+, o WSL2
+**✅ Resultado esperado:** Ubuntu 20.04+, Debian 11+, o WSL2 con Docker Desktop integrado o Docker Engine local
 
 ---
 

@@ -257,6 +257,10 @@ abctl local install --no-browser
 
 ### Error: "Docker daemon is not running"
 
+**Nota para WSL2 con Docker Desktop:**
+
+Si estás en WSL2 y usas Docker Desktop, primero verifica que la integración esté habilitada para esta distribución. El script ya intenta resolver el acceso al daemon automáticamente; si `docker ps` falla, el problema suele estar en la integración del lado de Docker Desktop o en que el daemon no está levantado.
+
 **Verificar instalación:**
 
 ```bash

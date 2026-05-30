@@ -37,6 +37,68 @@ check_command() {
     fi
 }
 
+DOCKER_CMD=(docker)
+COMPOSE_CMD=()
+
+is_wsl2() {
+    grep -qi microsoft /proc/version 2>/dev/null || uname -r | grep -qi microsoft
+}
+
+run_docker() {
+    "${DOCKER_CMD[@]}" "$@"
+}
+
+run_compose() {
+    "${COMPOSE_CMD[@]}" "$@"
+}
+
+configure_docker_access() {
+    if run_docker ps >/dev/null 2>&1; then
+        DOCKER_CMD=(docker)
+        return 0
+    fi
+
+    if check_command sudo && sudo docker ps >/dev/null 2>&1; then
+        DOCKER_CMD=(sudo docker)
+        return 0
+    fi
+
+    if ! is_wsl2 && check_command sudo; then
+        log_info "Intentando iniciar Docker en este host..."
+        sudo systemctl enable docker --now
+
+        if run_docker ps >/dev/null 2>&1; then
+            DOCKER_CMD=(docker)
+            return 0
+        fi
+
+        if sudo docker ps >/dev/null 2>&1; then
+            DOCKER_CMD=(sudo docker)
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+configure_compose_command() {
+    if run_docker compose version >/dev/null 2>&1; then
+        COMPOSE_CMD=("${DOCKER_CMD[@]}" compose)
+        return 0
+    fi
+
+    if check_command docker-compose; then
+        if [ "${DOCKER_CMD[0]}" = "sudo" ]; then
+            COMPOSE_CMD=(sudo docker-compose)
+        else
+            COMPOSE_CMD=(docker-compose)
+        fi
+        return 0
+    fi
+
+    return 1
+}
+
 # ----------------------------------------
 # Verificaciones previas
 # ----------------------------------------
@@ -74,29 +136,42 @@ else
     log_success "Docker instalado correctamente."
 fi
 
+if ! configure_docker_access; then
+    if is_wsl2; then
+        log_error "No se pudo acceder a Docker en WSL2. Verifica la integración de Docker Desktop para esta distro o que el daemon esté disponible."
+    else
+        log_error "No se pudo acceder a Docker. Verifica que el servicio esté activo y que tu usuario tenga permisos."
+    fi
+    exit 1
+fi
+
 # Instalar Docker Compose Plugin (v2) si no está disponible
-if ! docker compose version &> /dev/null; then
+if ! configure_compose_command; then
     log_info "Instalando Docker Compose..."
     sudo apt install -y docker-compose-plugin || sudo apt install -y docker-compose
     log_success "Docker Compose instalado correctamente."
 else
     log_info "Docker Compose ya está instalado. Versión:"
-    docker compose version || docker-compose --version
+    run_compose version
 fi
 
 # ------------------------------
 # 2. Habilitar el servicio de Docker
 # ------------------------------
-log_info "Habilitando y arrancando servicio Docker..."
-sudo systemctl enable docker --now
+if is_wsl2; then
+    log_info "Entorno WSL2 detectado: se omite la gestión del servicio Docker local."
+else
+    log_info "Habilitando y arrancando servicio Docker..."
+    sudo systemctl enable docker --now
 
-# Verificar que Docker está corriendo
-if ! sudo systemctl is-active --quiet docker; then
-    log_error "Docker no se pudo iniciar correctamente."
-    exit 1
+    # Verificar que Docker está corriendo
+    if ! sudo systemctl is-active --quiet docker; then
+        log_error "Docker no se pudo iniciar correctamente."
+        exit 1
+    fi
+
+    log_success "Servicio Docker está activo."
 fi
-
-log_success "Servicio Docker está activo."
 
 # ------------------------------
 # 3. Configurar permisos de Docker
@@ -104,12 +179,14 @@ log_success "Servicio Docker está activo."
 log_info "Configurando permisos de Docker para el usuario actual..."
 
 # Verificar si el usuario ya está en el grupo docker
-if groups $USER | grep -q '\bdocker\b'; then
+if getent group docker >/dev/null 2>&1 && groups "$USER" | grep -q '\bdocker\b'; then
     log_info "El usuario ya pertenece al grupo docker."
-else
+elif getent group docker >/dev/null 2>&1; then
     log_info "Agregando usuario al grupo docker..."
     sudo usermod -aG docker $USER
     log_success "Usuario agregado al grupo docker."
+else
+    log_info "El grupo docker no existe en este entorno. Se omite la reasignación de grupos."
 fi
 
 # ------------------------------
@@ -143,7 +220,7 @@ abctl version
 log_info "Verificando instalación existente de Airbyte..."
 
 # Verificar si Airbyte ya está instalado
-if docker ps --format '{{.Names}}' 2>/dev/null | grep -q 'airbyte-abctl'; then
+if run_docker ps --format '{{.Names}}' 2>/dev/null | grep -q 'airbyte-abctl'; then
     log_info "Se detectó una instalación existente de Airbyte."
     echo ""
     echo "Opciones disponibles:"
@@ -191,13 +268,16 @@ install_airbyte() {
     # Establecer BROWSER=echo para evitar que intente abrir el navegador automáticamente
     export BROWSER=echo
     
-    # Intentar primero sin sudo (si el usuario ya tiene permisos de docker activos)
+    # Intentar primero con acceso directo al daemon desde la sesión actual
     if docker ps &> /dev/null; then
         abctl local install --no-browser 2>/dev/null || abctl local install
-    else
-        # Si no tiene permisos activos, usar newgrp para aplicar el grupo docker
+    elif getent group docker >/dev/null 2>&1 && sudo docker ps &> /dev/null; then
+        # Si el usuario pertenece al grupo docker pero la sesión aún no lo refleja, ejecutamos el comando en ese grupo
         log_info "Aplicando permisos del grupo docker..."
         sg docker -c "BROWSER=echo abctl local install --no-browser 2>/dev/null || abctl local install"
+    else
+        log_error "No hay acceso operativo a Docker para ejecutar abctl."
+        return 1
     fi
 }
 
@@ -211,8 +291,11 @@ log_info "Obteniendo credenciales de Airbyte..."
 
 if docker ps &> /dev/null; then
     abctl local credentials
-else
+elif getent group docker >/dev/null 2>&1 && sudo docker ps &> /dev/null; then
     sg docker -c "abctl local credentials"
+else
+    log_error "No hay acceso operativo a Docker para obtener credenciales."
+    exit 1
 fi
 
 # -------------------------------
