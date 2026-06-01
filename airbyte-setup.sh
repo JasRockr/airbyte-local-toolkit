@@ -14,6 +14,30 @@ set -e  # Detener ejecución si cualquier comando falla
 set -u  # Error si se usan variables no definidas
 set -o pipefail  # Detectar errores en pipes
 
+ASSUME_YES=0
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        -y|--yes|--non-interactive)
+            ASSUME_YES=1
+            ;;
+        --help|-h)
+            cat <<'EOF'
+Uso: ./airbyte-setup.sh [--yes]
+
+Opciones:
+  -y, --yes, --non-interactive   Ejecuta sin pedir confirmaciones y usa valores seguros por defecto.
+EOF
+            exit 0
+            ;;
+        *)
+            log_error "Argumento no reconocido: $1"
+            exit 1
+            ;;
+    esac
+    shift
+done
+
 # ----------------------------------------
 # Funciones auxiliares
 # ----------------------------------------
@@ -241,6 +265,11 @@ fi
 
 # Verificar que se tiene acceso a sudo
 if ! sudo -n true 2>/dev/null; then
+    if [ "$ASSUME_YES" -eq 1 ] || [ ! -t 0 ]; then
+        log_error "Se requiere sudo sin interacción para continuar. Abre una terminal interactiva o configura sudo antes de ejecutar el instalador."
+        exit 1
+    fi
+
     log_info "Se requieren permisos de sudo. Por favor, ingresa tu contraseña:"
     sudo -v
 fi
@@ -327,13 +356,18 @@ log_info "Instalando Airbyte CLI (abctl)..."
 if check_command abctl; then
     log_info "abctl ya está instalado. Versión actual:"
     abctl version
-    read -p "¿Deseas reinstalar abctl? (s/N): " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Ss]$ ]]; then
+    if [ "$ASSUME_YES" -eq 1 ] || [ ! -t 0 ]; then
+        log_info "Modo no interactivo: se conservará la versión actual de abctl."
         log_info "Saltando instalación de abctl."
     else
-        curl -LsfS https://get.airbyte.com | bash -
-        log_success "abctl reinstalado correctamente."
+        read -p "¿Deseas reinstalar abctl? (s/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Ss]$ ]]; then
+            log_info "Saltando instalación de abctl."
+        else
+            curl -LsfS https://get.airbyte.com | bash -
+            log_success "abctl reinstalado correctamente."
+        fi
     fi
 else
     run_with_spinner "Instalando Airbyte CLI (abctl)" bash -lc 'set -o pipefail; curl -LsfS https://get.airbyte.com | bash -'
@@ -353,6 +387,14 @@ load_airbyte_port
 # Verificar si Airbyte ya está instalado
 if run_docker ps --format '{{.Names}}' 2>/dev/null | grep -q 'airbyte-abctl'; then
     log_info "Se detectó una instalación existente de Airbyte."
+    if [ "$ASSUME_YES" -eq 1 ] || [ ! -t 0 ]; then
+        log_info "Modo no interactivo: se conservará la instalación actual."
+        log_info "Airbyte está ejecutándose en: http://localhost:${AIRBYTE_PORT}"
+        log_info "Para ver credenciales ejecuta: abctl local credentials"
+        log_info "Para ver estado ejecuta: abctl local status"
+        exit 0
+    fi
+
     echo ""
     echo "Opciones disponibles:"
     echo "  1) Mantener instalación actual y salir"

@@ -4,11 +4,13 @@
 
 ## 🚀 Get Started
 
-Si quieres llegar a Airbyte funcionando lo antes posible, sigue este flujo:
+Si quieres llegar a Airbyte funcionando lo antes posible, sigue este recorrido en orden. Está escrito para que puedas leerlo de arriba hacia abajo sin saltarte pasos:
 
 > Recomendación práctica: en Ubuntu/Debian nativo o en una VM Linux (AWS, GCP, DigitalOcean, etc.) el flujo es más directo. En WSL2 también funciona, pero debe ejecutarse desde WSL2 con Docker integrado o con Docker Desktop habilitado para esa distro.
 
 ### 1. Prepara el entorno
+
+Empieza por confirmar que tu sistema cumple los pre-requisitos mínimos y que estás usando el entorno correcto.
 
 - Usa WSL2 con Ubuntu 22.04+ en Windows, o Ubuntu/Debian nativo compatible
 - Verifica que tengas al menos 10 GB libres, `sudo` y red estable
@@ -16,24 +18,38 @@ Si quieres llegar a Airbyte funcionando lo antes posible, sigue este flujo:
 
 ### 2. Instala
 
+Si vas a usar el flujo local clásico, otorga permisos y ejecuta el script principal:
+
 ```bash
 chmod +x airbyte-setup.sh scripts/airbyte-management.sh
 ./airbyte-setup.sh
 ```
 
+Si prefieres una instalación remota guiada, usa el bootstrap por `curl`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/JasRockr/airbyte-local-toolkit/main/install.sh | bash
+```
+
+Ese flujo descarga el toolkit en `~/.local/share/airbyte-local-toolkit`, valida el entorno y continúa con el setup sin pedir confirmaciones innecesarias cuando no hay interacción disponible.
+
 ### 3. Entra a Airbyte
+
+Cuando termine la instalación, obtén las credenciales y abre la URL que te indique el instalador o el script de gestión:
 
 ```bash
 ./scripts/airbyte-management.sh credentials
 ```
 
-- Abre la URL que te indique el instalador o el script de gestión; si `8000` estaba ocupado, se habrá elegido otro puerto libre automáticamente
+- Abre la URL que te indique el instalador; si `8000` estaba ocupado, se habrá elegido otro puerto libre automáticamente
 - Usa el correo que quieras registrar en el primer acceso
 - La contraseña es la que te muestra el comando de credenciales
 
 > Estado validado: el script de instalación y gestión quedó funcionando; si ves un error visual en `/setup`, normalmente se trata de caché o render del navegador, no del instalador.
 
 ### 4. Operación diaria
+
+Una vez levantado, ya puedes operar el entorno con los comandos habituales:
 
 ```bash
 ./scripts/airbyte-management.sh status
@@ -874,4 +890,4 @@ Los scripts están diseñados para facilitar el trabajo de la Ingeniería de Dat
 
 ---
 
-**¡Listo para comenzar con Airbyte! 🚀**  
+**¡Listo para comenzar con Airbyte! 🚀**
