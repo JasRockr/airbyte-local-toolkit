@@ -454,7 +454,8 @@ install_airbyte() {
     elif getent group docker >/dev/null 2>&1 && sudo docker ps &> /dev/null; then
         # Si el usuario pertenece al grupo docker pero la sesión aún no lo refleja, ejecutamos el comando en ese grupo
         log_info "Aplicando permisos del grupo docker..."
-        run_with_spinner "Instalando Airbyte Core en el entorno local" sg docker -c "BROWSER=echo abctl local install --no-browser --port '$AIRBYTE_PORT' 2>/dev/null || abctl local install --port '$AIRBYTE_PORT'"
+        # run_with_spinner "Instalando Airbyte Core en el entorno local" sg docker -c "BROWSER=echo abctl local install --no-browser --port '$AIRBYTE_PORT' 2>/dev/null || abctl local install --port '$AIRBYTE_PORT'"
+        run_with_spinner "Instalando Airbyte Core en el entorno local" sg docker -c "BROWSER=echo abctl local install --no-browser --port '$AIRBYTE_PORT' --host 10.10.0.2 --insecure-cookies 2>/dev/null || abctl local install --port '$AIRBYTE_PORT' --host 10.10.0.2 --insecure-cookies"
     else
         log_error "No hay acceso operativo a Docker para ejecutar abctl."
         return 1
